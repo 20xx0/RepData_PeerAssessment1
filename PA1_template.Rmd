@@ -1,25 +1,94 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
+title: 'Reproducible Research: Peer Assessment 1'
+output:
   html_document:
-    keep_md: true
+    keep_md: yes
+  pdf_document: default
 ---
 
+```{r echo=FALSE}
+# install.packages("ggplot2")
+# install.packages("lubridate")
+# install.packages("xtable")
+library(ggplot2)
+library(lubridate)
+library(xtable)
+# library(tinytex)
+# install_tinytex()
+```
 
 ## Loading and preprocessing the data
-
-
+Convert the date from char to date
+```{r}
+rawdata <- read.csv("activity.csv")
+data <- rawdata
+data$date <- as.Date(data$date)
+```
 
 ## What is mean total number of steps taken per day?
+This can be solved with the aggregate functions:
+```{r}
+sumVec <- with(data,aggregate(steps,list(date),sum,na.rm=TRUE))
+colnames(sumVec) <- c("Date", "Sum")
+meanVec <- with(data,aggregate(steps,list(date),mean,na.rm=TRUE))
+colnames(meanVec) <- c("Date", "Mean")
+medianVec <- with(data,aggregate(steps,list(date),median,na.rm=TRUE))
+colnames(medianVec) <- c("Date", "Median")
+hist(sumVec$Sum, main = "Histogram of total daily steps", xlab = "Number of steps")
 
-
+meanmed <- merge(meanVec,medianVec)
+meanmed
+```
 
 ## What is the average daily activity pattern?
 
-
+```{r}
+meanVec2 <- with(data,tapply(steps,interval,mean,na.rm=TRUE))
+plot(unique(data$interval),meanVec2,type="l", main ="Average daily activity pattern", xlab = "Interval", ylab = "Number of steps")
+maxint <- rownames(meanVec2)[which(meanVec2 == max(meanVec2))]
+```
+The `r maxint` interval contains the maximum number of steps, on average across all the days in the dataset.
 
 ## Imputing missing values
+```{r}
+naIdx = which(is.na(data))
+z <- length(naIdx)
+df <- data.frame(meanVec2)
+newData <- data
+```
+There are `r z` NA values in the dataset.
+The strategy to deal with the NAs is to plug in the calculated mean for the corresponding 5-minute interval.
+```{r}
+for (i in 1:length(naIdx)) {
+  int <- data$interval[naIdx[i]]
+  newSteps <- df[as.character(int),"meanVec2"]
+  newData$steps[naIdx[i]] <- newSteps
+}
 
+sumVec <- with(newData,tapply(steps,date,sum,na.rm=TRUE))
+sumVec <- data.frame(key=names(sumVec), value=sumVec)
+# p <- ggplot(data=sumVec, aes(x=key, y=value)) +
+# +     geom_bar(stat="identity")
 
+meanVec <- with(newData,aggregate(steps,list(date),mean,na.rm=TRUE))
+colnames(meanVec) <- c("Date", "Mean")
+medianVec <- with(newData,aggregate(steps,list(date),median,na.rm=TRUE))
+colnames(medianVec) <- c("Date", "Median")
+meanmed <- merge(meanVec,medianVec)
+meanmed
+```
 
 ## Are there differences in activity patterns between weekdays and weekends?
+```{r}
+newData$wd <- wday(newData$date, week_start = 1)
+newData$wd[which(newData$wd < 6)]="weekday"
+newData$wd[which(newData$wd != "weekday")]="weekend"
+newData$wd <- factor(newData$wd)
+
+weekdayMean <- with(newData,aggregate(steps, by=list(interval,wd), FUN=mean, na.rm=TRUE))
+
+s <- ggplot(weekdayMean, aes(Group.1, x)) + geom_line()
+s <- s + facet_grid(rows=vars(Group.2))
+s <- s + labs(x = "Interval", y = "Number of steps")
+s
+```
